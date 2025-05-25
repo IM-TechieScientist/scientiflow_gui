@@ -1,9 +1,10 @@
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QMessageBox, QFileDialog, QWidget
+    QApplication, QMainWindow, QMessageBox, QFileDialog, QWidget, QTableWidgetItem
 )
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
-import sys
+from PySide6.QtCore import Qt
+import sys, subprocess
 
 # Try to import AuthService, show error if not available
 try:
@@ -14,7 +15,7 @@ except ImportError:
 class LoginWindow:
     def __init__(self):
         loader = QUiLoader()
-        ui_file = QFile("ui/beta.ui")
+        ui_file = QFile("ui/login.ui")
         ui_file.open(QFile.ReadOnly)
         self.window = loader.load(ui_file)
         ui_file.close()
@@ -41,13 +42,13 @@ class LoginWindow:
 class GammaWindow:
     def __init__(self):
         loader = QUiLoader()
-        ui_file = QFile("ui/gamma.ui")
+        ui_file = QFile("ui/setup.ui")
         ui_file.open(QFile.ReadOnly)
         self.window = loader.load(ui_file)
         ui_file.close()
         self.window.pushButton.clicked.connect(self.handle_proceed)
         self.window.toolButton.clicked.connect(self.open_directory_dialog)
-        self.window.checkBox.stateChanged.connect(self.handle_checkbox)
+        # self.window.checkBox.stateChanged.connect(self.handle_checkbox)  # Removed, no such method
 
         self.base_directory = ""
         self.singularity_checked = False
@@ -57,43 +58,101 @@ class GammaWindow:
         if directory:
             self.window.lineEdit.setText(directory)
             self.base_directory = directory
-            self.dummy_set_base_directory(directory)
-
-    def handle_checkbox(self, state):
-        self.singularity_checked = bool(state)
 
     def handle_proceed(self):
-        if self.singularity_checked:
-            self.dummy_install_singularity()
-        # Always go to main window after proceed
-        self.main_window = MainWindow()
-        self.main_window.window.show()
-        self.window.close()
-
-    def dummy_install_singularity(self):
-        QMessageBox.information(self.window, "Install", "Dummy: Installing Singularity...")
-
-    def dummy_set_base_directory(self, directory):
-        QMessageBox.information(self.window, "Base Directory", f"Dummy: Set base directory to {directory}")
+        directory = self.window.lineEdit.text().strip()
+        hostname = self.window.lineEdit_2.text().strip()
+        if not directory or not hostname:
+            QMessageBox.warning(self.window, "Input Required", "Both base directory and host name are required.")
+            return
+        import subprocess
+        import sys
+        try:
+            # Run the CLI in the selected directory and provide hostname as input
+            result = subprocess.run(
+                ["scientiflow-cli", "--set-base-directory"],
+                input=f"{hostname}\n",
+                text=True,
+                cwd=directory,
+                capture_output=True,
+                check=True
+            )
+            if "Successfully set base directory" in result.stdout:
+                QMessageBox.information(self.window, "Success", "Base directory and host name set successfully.")
+                self.main_window = MainWindow()
+                self.main_window.window.show()
+                self.window.close()
+            else:
+                QMessageBox.critical(self.window, "Error", f"Unexpected CLI output: {result.stdout}\n{result.stderr}")
+        except subprocess.CalledProcessError as e:
+            QMessageBox.critical(self.window, "Error", f"Failed to set base directory or host name:\n{e.stderr}")
 
 class MainWindow:
     def __init__(self):
         loader = QUiLoader()
-        ui_file = QFile("ui/alpha.ui")
+        ui_file = QFile("ui/main.ui")
         ui_file.open(QFile.ReadOnly)
         self.window = loader.load(ui_file)
         ui_file.close()
 
         # Sidebar navigation
-        self.window.btn_jobs.clicked.connect(lambda: self.window.stackedWidget.setCurrentWidget(self.window.page_jobs))
+        self.window.btn_jobs.clicked.connect(self.show_jobs_page)
         self.window.btn_manage_containers.clicked.connect(lambda: self.window.stackedWidget.setCurrentWidget(self.window.page_manage_containers))
         self.window.btn_settings.clicked.connect(self.open_settings)
         self.window.btn_logout.clicked.connect(self.logout)
 
         # Default to jobs page
         self.window.stackedWidget.setCurrentWidget(self.window.page_jobs)
-
         self.settings_window = None
+
+        # Load jobs when landing on jobs page
+        self.show_jobs_page()
+
+    def show_jobs_page(self):
+        self.window.stackedWidget.setCurrentWidget(self.window.page_jobs)
+        self.load_jobs()
+
+    def load_jobs(self):
+    # import subprocess
+        table = self.window.table_jobs
+        table.setRowCount(0)
+
+        try:
+            result = subprocess.run(["scientiflow-cli", "--list-jobs"], capture_output=True, text=True, check=True)
+            output = result.stdout.strip().splitlines()
+
+            # Extract lines that are actual table rows
+            table_lines = [line for line in output if line.strip().startswith("|") and "|" in line]
+
+            if not table_lines:
+                table.setColumnCount(1)
+                table.setHorizontalHeaderLabels(["Message"])
+                table.setRowCount(1)
+                table.setItem(0, 0, QTableWidgetItem("No jobs found."))
+                return
+
+            # Parse headers
+            headers = [h.strip() for h in table_lines[0].split("|")[1:-1]]
+            table.setColumnCount(len(headers))
+            table.setHorizontalHeaderLabels(headers)
+
+            # Parse job rows
+            for i, row_line in enumerate(table_lines[2:]):  # skip header and separator
+                columns = [col.strip() for col in row_line.split("|")[1:-1]]
+                table.insertRow(i)
+                for j, col in enumerate(columns):
+                    item = QTableWidgetItem(col)
+                    item.setTextAlignment(Qt.AlignCenter)
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                    table.setItem(i, j, item)
+
+        except Exception as e:
+            table.setColumnCount(1)
+            table.setHorizontalHeaderLabels(["Error"])
+            table.setRowCount(1)
+            table.setItem(0, 0, QTableWidgetItem(f"Error loading jobs: {e}"))
+
+
 
     def open_settings(self):
         self.settings_window = SettingsWindow()
@@ -116,7 +175,7 @@ class MainWindow:
 class SettingsWindow:
     def __init__(self):
         loader = QUiLoader()
-        ui_file = QFile("ui/delta.ui")
+        ui_file = QFile("ui/settings.ui")
         ui_file.open(QFile.ReadOnly)
         self.window = loader.load(ui_file)
         ui_file.close()
