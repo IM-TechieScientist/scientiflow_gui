@@ -50,10 +50,14 @@ class GammaWindow:
         ui_file.close()
         self.window.pushButton.clicked.connect(self.handle_proceed)
         self.window.toolButton.clicked.connect(self.open_directory_dialog)
-        # self.window.checkBox.stateChanged.connect(self.handle_checkbox)  # Removed, no such method
-
+        self.window.checkBox.stateChanged.connect(self.handle_singularity_checkbox)
+        self.window.checkBox_2.setEnabled(False)
         self.base_directory = ""
         self.singularity_checked = False
+
+    def handle_singularity_checkbox(self, state):
+        # Enable GPU checkbox only if Singularity is checked
+        self.window.checkBox_2.setEnabled(state == 2)
 
     def open_directory_dialog(self):
         directory = QFileDialog.getExistingDirectory(self.window, "Select Base Directory")
@@ -67,10 +71,7 @@ class GammaWindow:
         if not directory or not hostname:
             QMessageBox.warning(self.window, "Input Required", "Both base directory and host name are required.")
             return
-        import subprocess
-        import sys
         try:
-            # Run the CLI in the selected directory and provide hostname as input
             result = subprocess.run(
                 ["scientiflow-cli", "--set-base-directory"],
                 input=f"{hostname}\n",
@@ -80,6 +81,16 @@ class GammaWindow:
                 check=True
             )
             if "Successfully set base directory" in result.stdout:
+                # After setting base directory, install Singularity if checked
+                if self.window.checkBox.isChecked():
+                    cmd = ["scientiflow-cli", "--install-singularity"]
+                    if self.window.checkBox_2.isChecked():
+                        cmd.append("--enable-gpu")
+                    try:
+                        install_result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                        QMessageBox.information(self.window, "Singularity Installation", install_result.stdout or "Singularity installed successfully.")
+                    except subprocess.CalledProcessError as e:
+                        QMessageBox.critical(self.window, "Singularity Installation Failed", e.stderr or str(e))
                 QMessageBox.information(self.window, "Success", "Base directory and host name set successfully.")
                 self.main_window = MainWindow()
                 self.main_window.window.show()
@@ -98,16 +109,23 @@ class JobsLoaderThread(QThread):
         try:
             result = subprocess.run(["scientiflow-cli", "--list-jobs"], capture_output=True, text=True, check=True)
             output = result.stdout.strip().splitlines()
-            table_lines = [line for line in output if line.strip().startswith("|") and "|" in line]
-            if not table_lines:
+            # Find header line with '┃'
+            header_line = next((line for line in output if '┃' in line), None)
+            if not header_line:
                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
                 return
-            headers = [h.strip() for h in table_lines[0].split("|")[1:-1]]
+            headers = [h.strip() for h in header_line.split('┃')[1:-1]]
+            # Find all data lines with '│'
+            data_lines = [line for line in output if '│' in line]
             rows = []
-            for row_line in table_lines[2:]:
-                columns = [col.strip() for col in row_line.split("|")[1:-1]]
-                rows.append(columns)
-            self.jobs_loaded.emit(headers, rows)
+            for row_line in data_lines:
+                columns = [col.strip() for col in row_line.split('│')[1:-1]]
+                if len(columns) == len(headers):
+                    rows.append(columns)
+            if not rows:
+                self.jobs_loaded.emit(["Message"], [["No jobs found."]])
+            else:
+                self.jobs_loaded.emit(headers, rows)
         except Exception as e:
             self.error.emit(str(e))
 
@@ -137,10 +155,10 @@ class MainWindow:
         self.window.stackedWidget.setCurrentWidget(self.window.page_jobs)
         self.load_jobs_async()
         # Disconnect all slots from the execute button to avoid RuntimeWarning
-        try:
-            self.window.btn_execute.clicked.disconnect()
-        except Exception:
-            pass
+        # try:
+        #     self.window.btn_execute.clicked.disconnect()
+        # except Exception:
+        #     pass
         self.window.btn_execute.clicked.connect(self.execute_selected_jobs)
         # Connect radio buttons to toggle checkboxes column
         self.window.radio_parallel.toggled.connect(self.toggle_select_column)
@@ -206,30 +224,44 @@ class MainWindow:
         job_ids = []
         parallel = self.window.radio_parallel.isChecked()
         synchronous = self.window.radio_synchronous.isChecked()
-        # If parallel, collect checked jobs; if synchronous, execute all
+
         if parallel:
+            # Collect only selected jobs via checkboxes
             for row in range(table.rowCount()):
                 widget = table.cellWidget(row, 0)
                 if widget:
                     cb = widget.findChild(QCheckBox)
                     if cb and cb.isChecked():
-                        job_id = table.item(row, 1).text()
-                        job_ids.append(job_id)
+                        job_id_item = table.item(row, 1)
+                        if job_id_item:
+                            job_ids.append(job_id_item.text())
             if not job_ids:
                 QMessageBox.warning(self.window, "No Jobs Selected", "Please select at least one job to execute in parallel mode.")
                 return
         else:
-            # Synchronous or async: execute all jobs
-            job_ids = [table.item(row, 1).text() for row in range(table.rowCount()) if table.item(row, 1)]
-        cmd = ["scientiflow-cli", "--execute-jobs"]
-        cmd.extend(job_ids)
+            # Synchronous mode: execute all jobs
+            for row in range(table.rowCount()):
+                job_id_item = table.item(row, 1)
+                if job_id_item:
+                    job_ids.append(job_id_item.text())
+
+        if not job_ids:
+            QMessageBox.warning(self.window, "No Jobs Found", "No jobs to execute.")
+            return
+
+        # Construct the CLI command
+        cmd = ["scientiflow-cli", "--execute-jobs"] + job_ids
         if parallel:
             cmd.append("--parallel")
+
         try:
             result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            QMessageBox.information(self.window, "Jobs Execution", result.stdout or "Jobs executed.")
+            stdout = result.stdout.strip()
+            QMessageBox.information(self.window, "Jobs Execution", stdout if stdout else "Jobs executed successfully.")
         except subprocess.CalledProcessError as e:
-            QMessageBox.critical(self.window, "Execution Failed", e.stderr or str(e))
+            stderr = e.stderr.strip() if e.stderr else "An error occurred while executing the jobs."
+            QMessageBox.critical(self.window, "Execution Failed", stderr)
+
 
     def open_settings(self):
         self.settings_window = SettingsWindow()
