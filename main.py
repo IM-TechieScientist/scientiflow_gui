@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread, Signal
 import sys, subprocess
 
 # Try to import AuthService, show error if not available
@@ -87,6 +88,28 @@ class GammaWindow:
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self.window, "Error", f"Failed to set base directory or host name:\n{e.stderr}")
 
+class JobsLoaderThread(QThread):
+    jobs_loaded = Signal(list, list)  # headers, rows
+    error = Signal(str)
+
+    def run(self):
+        import subprocess
+        try:
+            result = subprocess.run(["scientiflow-cli", "--list-jobs"], capture_output=True, text=True, check=True)
+            output = result.stdout.strip().splitlines()
+            table_lines = [line for line in output if line.strip().startswith("|") and "|" in line]
+            if not table_lines:
+                self.jobs_loaded.emit(["Message"], [["No jobs found."]])
+                return
+            headers = [h.strip() for h in table_lines[0].split("|")[1:-1]]
+            rows = []
+            for row_line in table_lines[2:]:
+                columns = [col.strip() for col in row_line.split("|")[1:-1]]
+                rows.append(columns)
+            self.jobs_loaded.emit(headers, rows)
+        except Exception as e:
+            self.error.emit(str(e))
+
 class MainWindow:
     def __init__(self):
         loader = QUiLoader()
@@ -104,55 +127,48 @@ class MainWindow:
         # Default to jobs page
         self.window.stackedWidget.setCurrentWidget(self.window.page_jobs)
         self.settings_window = None
+        self.jobs_loader_thread = None
 
         # Load jobs when landing on jobs page
         self.show_jobs_page()
 
     def show_jobs_page(self):
         self.window.stackedWidget.setCurrentWidget(self.window.page_jobs)
-        self.load_jobs()
+        self.load_jobs_async()
 
-    def load_jobs(self):
-    # import subprocess
+    def load_jobs_async(self):
         table = self.window.table_jobs
         table.setRowCount(0)
+        table.setColumnCount(1)
+        table.setHorizontalHeaderLabels(["Loading..."])
+        table.setRowCount(1)
+        table.setItem(0, 0, QTableWidgetItem("Loading jobs, please wait..."))
 
-        try:
-            result = subprocess.run(["scientiflow-cli", "--list-jobs"], capture_output=True, text=True, check=True)
-            output = result.stdout.strip().splitlines()
+        self.jobs_loader_thread = JobsLoaderThread()
+        self.jobs_loader_thread.jobs_loaded.connect(self.on_jobs_loaded)
+        self.jobs_loader_thread.error.connect(self.on_jobs_error)
+        self.jobs_loader_thread.start()
 
-            # Extract lines that are actual table rows
-            table_lines = [line for line in output if line.strip().startswith("|") and "|" in line]
+    def on_jobs_loaded(self, headers, rows):
+        table = self.window.table_jobs
+        table.setRowCount(0)
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        for i, row in enumerate(rows):
+            table.insertRow(i)
+            for j, col in enumerate(row):
+                item = QTableWidgetItem(col)
+                item.setTextAlignment(Qt.AlignCenter)
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                table.setItem(i, j, item)
 
-            if not table_lines:
-                table.setColumnCount(1)
-                table.setHorizontalHeaderLabels(["Message"])
-                table.setRowCount(1)
-                table.setItem(0, 0, QTableWidgetItem("No jobs found."))
-                return
-
-            # Parse headers
-            headers = [h.strip() for h in table_lines[0].split("|")[1:-1]]
-            table.setColumnCount(len(headers))
-            table.setHorizontalHeaderLabels(headers)
-
-            # Parse job rows
-            for i, row_line in enumerate(table_lines[2:]):  # skip header and separator
-                columns = [col.strip() for col in row_line.split("|")[1:-1]]
-                table.insertRow(i)
-                for j, col in enumerate(columns):
-                    item = QTableWidgetItem(col)
-                    item.setTextAlignment(Qt.AlignCenter)
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    table.setItem(i, j, item)
-
-        except Exception as e:
-            table.setColumnCount(1)
-            table.setHorizontalHeaderLabels(["Error"])
-            table.setRowCount(1)
-            table.setItem(0, 0, QTableWidgetItem(f"Error loading jobs: {e}"))
-
-
+    def on_jobs_error(self, error_msg):
+        table = self.window.table_jobs
+        table.setRowCount(0)
+        table.setColumnCount(1)
+        table.setHorizontalHeaderLabels(["Error"])
+        table.setRowCount(1)
+        table.setItem(0, 0, QTableWidgetItem(f"Error loading jobs: {error_msg}"))
 
     def open_settings(self):
         self.settings_window = SettingsWindow()
