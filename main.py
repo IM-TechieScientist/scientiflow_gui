@@ -41,6 +41,22 @@ class LoginWindow:
         self.next_window.window.show()
         self.window.close()
 
+class SingularityInstallerThread(QThread):
+    finished = Signal(str, bool)  # message, success
+    def __init__(self, enable_gpu=False):
+        super().__init__()
+        self.enable_gpu = enable_gpu
+    def run(self):
+        import subprocess
+        cmd = ["scientiflow-cli", "--install-singularity"]
+        if self.enable_gpu:
+            cmd.append("--enable-gpu")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            self.finished.emit(result.stdout or "Singularity installed successfully.", True)
+        except subprocess.CalledProcessError as e:
+            self.finished.emit(e.stderr or str(e), False)
+
 class GammaWindow:
     def __init__(self):
         loader = QUiLoader()
@@ -52,11 +68,11 @@ class GammaWindow:
         self.window.toolButton.clicked.connect(self.open_directory_dialog)
         self.window.checkBox.stateChanged.connect(self.handle_singularity_checkbox)
         self.window.checkBox_2.setEnabled(False)
+        self.singularity_thread = None
         self.base_directory = ""
         self.singularity_checked = False
 
     def handle_singularity_checkbox(self, state):
-        # Enable GPU checkbox only if Singularity is checked
         self.window.checkBox_2.setEnabled(state == 2)
 
     def open_directory_dialog(self):
@@ -81,24 +97,31 @@ class GammaWindow:
                 check=True
             )
             if "Successfully set base directory" in result.stdout:
-                # After setting base directory, install Singularity if checked
                 if self.window.checkBox.isChecked():
-                    cmd = ["scientiflow-cli", "--install-singularity"]
-                    if self.window.checkBox_2.isChecked():
-                        cmd.append("--enable-gpu")
-                    try:
-                        install_result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                        QMessageBox.information(self.window, "Singularity Installation", install_result.stdout or "Singularity installed successfully.")
-                    except subprocess.CalledProcessError as e:
-                        QMessageBox.critical(self.window, "Singularity Installation Failed", e.stderr or str(e))
-                QMessageBox.information(self.window, "Success", "Base directory and host name set successfully.")
-                self.main_window = MainWindow()
-                self.main_window.window.show()
-                self.window.close()
+                    self.window.pushButton.setEnabled(False)
+                    self.singularity_thread = SingularityInstallerThread(self.window.checkBox_2.isChecked())
+                    self.singularity_thread.finished.connect(self.on_singularity_installed)
+                    self.singularity_thread.start()
+                    QMessageBox.information(self.window, "Singularity Installation", "Installing Singularity, please wait...")
+                else:
+                    QMessageBox.information(self.window, "Success", "Base directory and host name set successfully.")
+                    self.main_window = MainWindow()
+                    self.main_window.window.show()
+                    self.window.close()
             else:
                 QMessageBox.critical(self.window, "Error", f"Unexpected CLI output: {result.stdout}\n{result.stderr}")
         except subprocess.CalledProcessError as e:
             QMessageBox.critical(self.window, "Error", f"Failed to set base directory or host name:\n{e.stderr}")
+
+    def on_singularity_installed(self, message, success):
+        self.window.pushButton.setEnabled(True)
+        if success:
+            QMessageBox.information(self.window, "Singularity Installation", message)
+            self.main_window = MainWindow()
+            self.main_window.window.show()
+            self.window.close()
+        else:
+            QMessageBox.critical(self.window, "Singularity Installation Failed", message)
 
 class JobsLoaderThread(QThread):
     jobs_loaded = Signal(list, list)  # headers, rows
