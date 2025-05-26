@@ -130,19 +130,36 @@ class JobsLoaderThread(QThread):
     def run(self):
         import subprocess
         try:
-            result = subprocess.run(["scientiflow-cli", "--list-jobs"], capture_output=True, text=True, check=True)
+            result = subprocess.run(
+                ["scientiflow-cli", "--list-jobs"],
+                capture_output=True, text=True, check=True, encoding="utf-8"
+            )
             output = result.stdout.strip().splitlines()
-            # Find header line with '┃'
-            header_line = next((line for line in output if '┃' in line), None)
+            # Print raw output for debugging
+            # print(repr(result.stdout))
+
+            # Try to find a header line with any of the possible separators
+            header_line = next(
+                (line for line in output if any(sep in line for sep in ['┃', '|', '│'])),
+                None
+            )
             if not header_line:
                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
                 return
-            headers = [h.strip() for h in header_line.split('┃')[1:-1]]
-            # Find all data lines with '│'
-            data_lines = [line for line in output if '│' in line]
+
+            # Pick the first found separator
+            for sep in ['┃', '|', '│']:
+                if sep in header_line:
+                    split_sep = sep
+                    break
+
+            headers = [h.strip() for h in header_line.split(split_sep)[1:-1]]
+
+            # Find all data lines with the separator
+            data_lines = [line for line in output if split_sep in line and line != header_line]
             rows = []
             for row_line in data_lines:
-                columns = [col.strip() for col in row_line.split('│')[1:-1]]
+                columns = [col.strip() for col in row_line.split(split_sep)[1:-1]]
                 if len(columns) == len(headers):
                     rows.append(columns)
             if not rows:
