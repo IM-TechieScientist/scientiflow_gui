@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread, Signal
 import sys, subprocess
 
-# Try to import AuthService, show error if not available
+# Try to import AuthService, show error if not available 
 try:
     from scientiflow_cli.services.auth_service import AuthService
 except ImportError:
