@@ -6,7 +6,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread, Signal
-import sys, subprocess
+import sys, subprocess, platform
 
 # Try to import AuthService, show error if not available
 try:
@@ -47,7 +47,11 @@ class SingularityInstallerThread(QThread):
         super().__init__()
         self.enable_gpu = enable_gpu
     def run(self):
-        import subprocess
+    
+        if platform.system() == "Windows":
+            self.finished.emit("Singularity installation is only supported on Linux", False)
+            return
+        
         cmd = ["scientiflow-cli", "--install-singularity"]
         if self.enable_gpu:
             cmd.append("--enable-gpu")
@@ -101,8 +105,8 @@ class GammaWindow:
                     self.window.pushButton.setEnabled(False)
                     self.singularity_thread = SingularityInstallerThread(self.window.checkBox_2.isChecked())
                     self.singularity_thread.finished.connect(self.on_singularity_installed)
-                    self.singularity_thread.start()
                     QMessageBox.information(self.window, "Singularity Installation", "Installing Singularity, please wait...")
+                    self.singularity_thread.start()
                 else:
                     QMessageBox.information(self.window, "Success", "Base directory and host name set successfully.")
                     self.main_window = MainWindow()
