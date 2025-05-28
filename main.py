@@ -2,6 +2,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QMessageBox, QFileDialog, QWidget, QTableWidgetItem,
     QCheckBox, QHBoxLayout
 )
+import qdarkstyle
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
 from PySide6.QtCore import Qt
@@ -11,6 +12,7 @@ import sys, subprocess, platform
 # Try to import AuthService, show error if not available
 try:
     from scientiflow_cli.services.auth_service import AuthService
+    from scientiflow_cli.pipeline.get_jobs import get_jobs
 except ImportError:
     AuthService = None
 
@@ -127,52 +129,79 @@ class GammaWindow:
         else:
             QMessageBox.critical(self.window, "Singularity Installation Failed", message)
 
+# class JobsLoaderThread(QThread):
+#     jobs_loaded = Signal(list, list)  # headers, rows
+#     error = Signal(str)
+
+#     def run(self):
+#         import subprocess
+#         try:
+#             result = subprocess.run(
+#                 ["scientiflow-cli", "--list-jobs"],
+#                 capture_output=True, text=True, check=True, encoding="utf-8"
+#             )
+#             output = result.stdout.strip().splitlines()
+#             # Print raw output for debugging
+#             # print(repr(result.stdout))
+
+#             # Try to find a header line with any of the possible separators
+#             header_line = next(
+#                 (line for line in output if any(sep in line for sep in ['┃', '|', '│'])),
+#                 None
+#             )
+#             if not header_line:
+#                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
+#                 return
+
+#             # Pick the first found separator
+#             for sep in ['┃', '|', '│']:
+#                 if sep in header_line:
+#                     split_sep = sep
+#                     break
+
+#             headers = [h.strip() for h in header_line.split(split_sep)[1:-1]]
+
+#             # Find all data lines with the separator
+#             data_lines = [line for line in output if split_sep in line and line != header_line]
+#             rows = []
+#             for row_line in data_lines:
+#                 columns = [col.strip() for col in row_line.split(split_sep)[1:-1]]
+#                 if len(columns) == len(headers):
+#                     rows.append(columns)
+#             if not rows:
+#                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
+#             else:
+#                 self.jobs_loaded.emit(headers, rows)
+#         except Exception as e:
+#             self.error.emit(str(e))
+
 class JobsLoaderThread(QThread):
     jobs_loaded = Signal(list, list)  # headers, rows
     error = Signal(str)
 
     def run(self):
-        import subprocess
         try:
-            result = subprocess.run(
-                ["scientiflow-cli", "--list-jobs"],
-                capture_output=True, text=True, check=True, encoding="utf-8"
-            )
-            output = result.stdout.strip().splitlines()
-            # Print raw output for debugging
-            # print(repr(result.stdout))
+            # Call the get_jobs function directly
+            jobs = get_jobs()
 
-            # Try to find a header line with any of the possible separators
-            header_line = next(
-                (line for line in output if any(sep in line for sep in ['┃', '|', '│'])),
-                None
-            )
-            if not header_line:
+            if not jobs:
                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
                 return
 
-            # Pick the first found separator
-            for sep in ['┃', '|', '│']:
-                if sep in header_line:
-                    split_sep = sep
-                    break
-
-            headers = [h.strip() for h in header_line.split(split_sep)[1:-1]]
-
-            # Find all data lines with the separator
-            data_lines = [line for line in output if split_sep in line and line != header_line]
+            # Extract headers and rows from the jobs data
+            headers = ["Project Job ID", "Project Title", "Job Title"]
             rows = []
-            for row_line in data_lines:
-                columns = [col.strip() for col in row_line.split(split_sep)[1:-1]]
-                if len(columns) == len(headers):
-                    rows.append(columns)
-            if not rows:
-                self.jobs_loaded.emit(["Message"], [["No jobs found."]])
-            else:
-                self.jobs_loaded.emit(headers, rows)
-        except Exception as e:
-            self.error.emit(str(e))
+            for job in jobs:
+                project_job_id = str(job['project_job']['id'])
+                project_title = job['project']['project_title']
+                job_title = job['project_job']['job_title']
+                rows.append([project_job_id, project_title, job_title])
 
+            self.jobs_loaded.emit(headers, rows)
+
+        except Exception as e:
+            self.error.emit(f"Unexpected error: {str(e)}")
+            
 class MainWindow:
     def __init__(self):
         loader = QUiLoader()
@@ -363,6 +392,7 @@ class SettingsWindow:
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet(qdarkstyle.load_stylesheet(palette=qdarkstyle.LightPalette))
     login = LoginWindow()
     login.window.show()
     sys.exit(app.exec())
