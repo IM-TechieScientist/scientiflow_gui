@@ -129,52 +129,6 @@ class GammaWindow:
         else:
             QMessageBox.critical(self.window, "Singularity Installation Failed", message)
 
-# class JobsLoaderThread(QThread):
-#     jobs_loaded = Signal(list, list)  # headers, rows
-#     error = Signal(str)
-
-#     def run(self):
-#         import subprocess
-#         try:
-#             result = subprocess.run(
-#                 ["scientiflow-cli", "--list-jobs"],
-#                 capture_output=True, text=True, check=True, encoding="utf-8"
-#             )
-#             output = result.stdout.strip().splitlines()
-#             # Print raw output for debugging
-#             # print(repr(result.stdout))
-
-#             # Try to find a header line with any of the possible separators
-#             header_line = next(
-#                 (line for line in output if any(sep in line for sep in ['┃', '|', '│'])),
-#                 None
-#             )
-#             if not header_line:
-#                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
-#                 return
-
-#             # Pick the first found separator
-#             for sep in ['┃', '|', '│']:
-#                 if sep in header_line:
-#                     split_sep = sep
-#                     break
-
-#             headers = [h.strip() for h in header_line.split(split_sep)[1:-1]]
-
-#             # Find all data lines with the separator
-#             data_lines = [line for line in output if split_sep in line and line != header_line]
-#             rows = []
-#             for row_line in data_lines:
-#                 columns = [col.strip() for col in row_line.split(split_sep)[1:-1]]
-#                 if len(columns) == len(headers):
-#                     rows.append(columns)
-#             if not rows:
-#                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
-#             else:
-#                 self.jobs_loaded.emit(headers, rows)
-#         except Exception as e:
-#             self.error.emit(str(e))
-
 class JobsLoaderThread(QThread):
     jobs_loaded = Signal(list, list)  # headers, rows
     error = Signal(str)
@@ -201,7 +155,31 @@ class JobsLoaderThread(QThread):
 
         except Exception as e:
             self.error.emit(f"Unexpected error: {str(e)}")
-            
+
+class JobExecutionThread(QThread):
+    finished = Signal(str, bool)  # message, success
+
+    def __init__(self, job_ids, parallel):
+        super().__init__()
+        self.job_ids = job_ids
+        self.parallel = parallel
+
+    def run(self):
+        # Construct the CLI command
+        cmd = ["scientiflow-cli", "--execute-jobs"] + self.job_ids
+        if self.parallel:
+            cmd.append("--parallel")
+
+        try:
+            print(f"Executing command: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            stdout = result.stdout.strip()
+            print(f"Command output: {stdout}")
+            self.finished.emit(stdout if stdout else "Jobs executed successfully.", True)
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.strip() if e.stderr else "An error occurred while executing the jobs."
+            self.finished.emit(stderr, False)
+
 class MainWindow:
     def __init__(self):
         loader = QUiLoader()
@@ -296,7 +274,6 @@ class MainWindow:
         table = self.window.table_jobs
         job_ids = []
         parallel = self.window.radio_parallel.isChecked()
-        synchronous = self.window.radio_synchronous.isChecked()
 
         if parallel:
             # Collect only selected jobs via checkboxes
@@ -322,18 +299,19 @@ class MainWindow:
             QMessageBox.warning(self.window, "No Jobs Found", "No jobs to execute.")
             return
 
-        # Construct the CLI command
-        cmd = ["scientiflow-cli", "--execute-jobs"] + job_ids
-        if parallel:
-            cmd.append("--parallel")
+        # Show a message box indicating execution has started
+        QMessageBox.information(self.window, "Execution Started", f"Execution of {len(job_ids)} job(s) has started.")
+        print(f"Executing jobs: {job_ids} in {'parallel' if parallel else 'synchronous'} mode.")
+        # Start the job execution thread
+        self.job_execution_thread = JobExecutionThread(job_ids, parallel)
+        self.job_execution_thread.finished.connect(self.on_job_execution_finished)
+        self.job_execution_thread.start()
 
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            stdout = result.stdout.strip()
-            QMessageBox.information(self.window, "Jobs Execution", stdout if stdout else "Jobs executed successfully.")
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.strip() if e.stderr else "An error occurred while executing the jobs."
-            QMessageBox.critical(self.window, "Execution Failed", stderr)
+    def on_job_execution_finished(self, message, success):
+        if success:
+            QMessageBox.information(self.window, "Execution Completed", message)
+        else:
+            QMessageBox.critical(self.window, "Execution Failed", message)
 
 
     def open_settings(self):
