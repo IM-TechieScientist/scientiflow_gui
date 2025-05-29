@@ -16,8 +16,9 @@ from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
     QImage, QKeySequence, QLinearGradient, QPainter,
     QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QCheckBox, QHBoxLayout, QLabel,
-    QLineEdit, QMainWindow, QMenuBar, QPushButton,
-    QSizePolicy, QStatusBar, QToolButton, QWidget)
+    QLayout, QLineEdit, QMainWindow, QMenuBar,
+    QPushButton, QSizePolicy, QSpacerItem, QStatusBar,
+    QToolButton, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -37,29 +38,30 @@ class Ui_MainWindow(object):
         self.label.setGeometry(QRect(200, 50, 191, 61))
         self.pushButton = QPushButton(self.centralwidget)
         self.pushButton.setObjectName(u"pushButton")
-        self.pushButton.setGeometry(QRect(200, 310, 231, 31))
+        self.pushButton.setGeometry(QRect(200, 310, 271, 31))
         self.label_3 = QLabel(self.centralwidget)
         self.label_3.setObjectName(u"label_3")
         self.label_3.setGeometry(QRect(200, 150, 271, 21))
         self.label_3.setFont(font)
-        self.widget = QWidget(self.centralwidget)
-        self.widget.setObjectName(u"widget")
-        self.widget.setGeometry(QRect(200, 270, 240, 21))
-        self.horizontalLayout_3 = QHBoxLayout(self.widget)
+        self.layoutWidget = QWidget(self.centralwidget)
+        self.layoutWidget.setObjectName(u"layoutWidget")
+        self.layoutWidget.setGeometry(QRect(200, 270, 295, 24))
+        self.horizontalLayout_3 = QHBoxLayout(self.layoutWidget)
         self.horizontalLayout_3.setSpacing(15)
         self.horizontalLayout_3.setObjectName(u"horizontalLayout_3")
         self.horizontalLayout_3.setContentsMargins(0, 0, 0, 0)
         self.horizontalLayout = QHBoxLayout()
         self.horizontalLayout.setObjectName(u"horizontalLayout")
         self.horizontalLayout.setContentsMargins(-1, -1, 6, -1)
-        self.label_4 = QLabel(self.widget)
+        self.label_4 = QLabel(self.layoutWidget)
         self.label_4.setObjectName(u"label_4")
         self.label_4.setFont(font)
 
         self.horizontalLayout.addWidget(self.label_4)
 
-        self.checkBox = QCheckBox(self.widget)
+        self.checkBox = QCheckBox(self.layoutWidget)
         self.checkBox.setObjectName(u"checkBox")
+        self.checkBox.setMinimumSize(QSize(20, 0))
         self.checkBox.setFont(font)
         self.checkBox.setIconSize(QSize(17, 17))
 
@@ -68,17 +70,22 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_3.addLayout(self.horizontalLayout)
 
+        self.horizontalSpacer = QSpacerItem(10, 20, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_3.addItem(self.horizontalSpacer)
+
         self.horizontalLayout_2 = QHBoxLayout()
         self.horizontalLayout_2.setObjectName(u"horizontalLayout_2")
         self.horizontalLayout_2.setContentsMargins(-1, -1, 6, -1)
-        self.label_6 = QLabel(self.widget)
+        self.label_6 = QLabel(self.layoutWidget)
         self.label_6.setObjectName(u"label_6")
         self.label_6.setFont(font)
 
         self.horizontalLayout_2.addWidget(self.label_6)
 
-        self.checkBox_2 = QCheckBox(self.widget)
+        self.checkBox_2 = QCheckBox(self.layoutWidget)
         self.checkBox_2.setObjectName(u"checkBox_2")
+        self.checkBox_2.setMinimumSize(QSize(20, 0))
         self.checkBox_2.setFont(font)
         self.checkBox_2.setIconSize(QSize(17, 17))
         self.checkBox_2.setCheckable(True)
@@ -88,40 +95,52 @@ class Ui_MainWindow(object):
 
         self.horizontalLayout_3.addLayout(self.horizontalLayout_2)
 
-        self.widget1 = QWidget(self.centralwidget)
-        self.widget1.setObjectName(u"widget1")
-        self.widget1.setGeometry(QRect(200, 220, 231, 24))
-        self.horizontalLayout_4 = QHBoxLayout(self.widget1)
+        self.layoutWidget1 = QWidget(self.centralwidget)
+        self.layoutWidget1.setObjectName(u"layoutWidget1")
+        self.layoutWidget1.setGeometry(QRect(200, 220, 231, 24))
+        self.horizontalLayout_4 = QHBoxLayout(self.layoutWidget1)
         self.horizontalLayout_4.setSpacing(15)
         self.horizontalLayout_4.setObjectName(u"horizontalLayout_4")
         self.horizontalLayout_4.setContentsMargins(0, 0, 0, 0)
-        self.label_5 = QLabel(self.widget1)
+        self.label_5 = QLabel(self.layoutWidget1)
         self.label_5.setObjectName(u"label_5")
         self.label_5.setFont(font)
 
         self.horizontalLayout_4.addWidget(self.label_5)
 
-        self.lineEdit_2 = QLineEdit(self.widget1)
-        self.lineEdit_2.setObjectName(u"lineEdit_2")
-
-        self.horizontalLayout_4.addWidget(self.lineEdit_2)
-
-        self.widget2 = QWidget(self.centralwidget)
-        self.widget2.setObjectName(u"widget2")
-        self.widget2.setGeometry(QRect(200, 180, 231, 24))
-        self.horizontalLayout_5 = QHBoxLayout(self.widget2)
+        self.layoutWidget2 = QWidget(self.centralwidget)
+        self.layoutWidget2.setObjectName(u"layoutWidget2")
+        self.layoutWidget2.setGeometry(QRect(200, 180, 271, 24))
+        self.horizontalLayout_5 = QHBoxLayout(self.layoutWidget2)
         self.horizontalLayout_5.setObjectName(u"horizontalLayout_5")
+        self.horizontalLayout_5.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
         self.horizontalLayout_5.setContentsMargins(0, 0, 0, 0)
-        self.lineEdit = QLineEdit(self.widget2)
+        self.lineEdit = QLineEdit(self.layoutWidget2)
         self.lineEdit.setObjectName(u"lineEdit")
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.lineEdit.sizePolicy().hasHeightForWidth())
+        self.lineEdit.setSizePolicy(sizePolicy)
+        self.lineEdit.setMinimumSize(QSize(0, 0))
 
         self.horizontalLayout_5.addWidget(self.lineEdit)
 
-        self.toolButton = QToolButton(self.widget2)
+        self.horizontalSpacer_2 = QSpacerItem(2, 5, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Minimum)
+
+        self.horizontalLayout_5.addItem(self.horizontalSpacer_2)
+
+        self.toolButton = QToolButton(self.layoutWidget2)
         self.toolButton.setObjectName(u"toolButton")
 
         self.horizontalLayout_5.addWidget(self.toolButton)
 
+        self.lineEdit_2 = QLineEdit(self.centralwidget)
+        self.lineEdit_2.setObjectName(u"lineEdit_2")
+        self.lineEdit_2.setGeometry(QRect(298, 220, 171, 22))
+        sizePolicy.setHeightForWidth(self.lineEdit_2.sizePolicy().hasHeightForWidth())
+        self.lineEdit_2.setSizePolicy(sizePolicy)
+        self.lineEdit_2.setMinimumSize(QSize(0, 0))
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
