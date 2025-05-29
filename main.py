@@ -2,15 +2,17 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QMessageBox, QFileDialog, QWidget, QTableWidgetItem,
     QCheckBox, QHBoxLayout
 )
+import qdarkstyle
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread, Signal
-import sys, subprocess
+import sys, subprocess, platform
 
 # Try to import AuthService, show error if not available 
 try:
     from scientiflow_cli.services.auth_service import AuthService
+    from scientiflow_cli.pipeline.get_jobs import get_jobs
 except ImportError:
     AuthService = None
 
@@ -47,7 +49,11 @@ class SingularityInstallerThread(QThread):
         super().__init__()
         self.enable_gpu = enable_gpu
     def run(self):
-        import subprocess
+    
+        if platform.system() == "Windows":
+            self.finished.emit("Singularity installation is only supported on Linux", False)
+            return
+        
         cmd = ["scientiflow-cli", "--install-singularity"]
         if self.enable_gpu:
             cmd.append("--enable-gpu")
@@ -101,8 +107,8 @@ class GammaWindow:
                     self.window.pushButton.setEnabled(False)
                     self.singularity_thread = SingularityInstallerThread(self.window.checkBox_2.isChecked())
                     self.singularity_thread.finished.connect(self.on_singularity_installed)
-                    self.singularity_thread.start()
                     QMessageBox.information(self.window, "Singularity Installation", "Installing Singularity, please wait...")
+                    self.singularity_thread.start()
                 else:
                     QMessageBox.information(self.window, "Success", "Base directory and host name set successfully.")
                     self.main_window = MainWindow()
@@ -128,29 +134,51 @@ class JobsLoaderThread(QThread):
     error = Signal(str)
 
     def run(self):
-        import subprocess
         try:
-            result = subprocess.run(["scientiflow-cli", "--list-jobs"], capture_output=True, text=True, check=True)
-            output = result.stdout.strip().splitlines()
-            # Find header line with '┃'
-            header_line = next((line for line in output if '┃' in line), None)
-            if not header_line:
+            # Call the get_jobs function directly
+            jobs = get_jobs()
+
+            if not jobs:
                 self.jobs_loaded.emit(["Message"], [["No jobs found."]])
                 return
-            headers = [h.strip() for h in header_line.split('┃')[1:-1]]
-            # Find all data lines with '│'
-            data_lines = [line for line in output if '│' in line]
+
+            # Extract headers and rows from the jobs data
+            headers = ["Project Job ID", "Project Title", "Job Title"]
             rows = []
-            for row_line in data_lines:
-                columns = [col.strip() for col in row_line.split('│')[1:-1]]
-                if len(columns) == len(headers):
-                    rows.append(columns)
-            if not rows:
-                self.jobs_loaded.emit(["Message"], [["No jobs found."]])
-            else:
-                self.jobs_loaded.emit(headers, rows)
+            for job in jobs:
+                project_job_id = str(job['project_job']['id'])
+                project_title = job['project']['project_title']
+                job_title = job['project_job']['job_title']
+                rows.append([project_job_id, project_title, job_title])
+
+            self.jobs_loaded.emit(headers, rows)
+
         except Exception as e:
-            self.error.emit(str(e))
+            self.error.emit(f"Unexpected error: {str(e)}")
+
+class JobExecutionThread(QThread):
+    finished = Signal(str, bool)  # message, success
+
+    def __init__(self, job_ids, parallel):
+        super().__init__()
+        self.job_ids = job_ids
+        self.parallel = parallel
+
+    def run(self):
+        # Construct the CLI command
+        cmd = ["scientiflow-cli", "--execute-jobs"] + self.job_ids
+        if self.parallel:
+            cmd.append("--parallel")
+
+        try:
+            print(f"Executing command: {' '.join(cmd)}")
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            stdout = result.stdout.strip()
+            print(f"Command output: {stdout}")
+            self.finished.emit(stdout if stdout else "Jobs executed successfully.", True)
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.strip() if e.stderr else "An error occurred while executing the jobs."
+            self.finished.emit(stderr, False)
 
 class MainWindow:
     def __init__(self):
@@ -246,7 +274,6 @@ class MainWindow:
         table = self.window.table_jobs
         job_ids = []
         parallel = self.window.radio_parallel.isChecked()
-        synchronous = self.window.radio_synchronous.isChecked()
 
         if parallel:
             # Collect only selected jobs via checkboxes
@@ -272,18 +299,19 @@ class MainWindow:
             QMessageBox.warning(self.window, "No Jobs Found", "No jobs to execute.")
             return
 
-        # Construct the CLI command
-        cmd = ["scientiflow-cli", "--execute-jobs"] + job_ids
-        if parallel:
-            cmd.append("--parallel")
+        # Show a message box indicating execution has started
+        QMessageBox.information(self.window, "Execution Started", f"Execution of {len(job_ids)} job(s) has started.")
+        print(f"Executing jobs: {job_ids} in {'parallel' if parallel else 'synchronous'} mode.")
+        # Start the job execution thread
+        self.job_execution_thread = JobExecutionThread(job_ids, parallel)
+        self.job_execution_thread.finished.connect(self.on_job_execution_finished)
+        self.job_execution_thread.start()
 
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            stdout = result.stdout.strip()
-            QMessageBox.information(self.window, "Jobs Execution", stdout if stdout else "Jobs executed successfully.")
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.strip() if e.stderr else "An error occurred while executing the jobs."
-            QMessageBox.critical(self.window, "Execution Failed", stderr)
+    def on_job_execution_finished(self, message, success):
+        if success:
+            QMessageBox.information(self.window, "Execution Completed", message)
+        else:
+            QMessageBox.critical(self.window, "Execution Failed", message)
 
 
     def open_settings(self):
@@ -342,6 +370,7 @@ class SettingsWindow:
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet(qdarkstyle.load_stylesheet(palette=qdarkstyle.LightPalette))
     login = LoginWindow()
     login.window.show()
     sys.exit(app.exec())
