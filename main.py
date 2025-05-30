@@ -2,17 +2,21 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QMessageBox, QFileDialog, QWidget, QTableWidgetItem,
     QCheckBox, QHBoxLayout
 )
+
 import qdarkstyle
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread, Signal
 import sys, subprocess, platform
+from pathlib import Path
 
-# Try to import AuthService, show error if not available
+# Try to import Scientiflow-cli services, show error if not available
 try:
     from scientiflow_cli.services.auth_service import AuthService
     from scientiflow_cli.pipeline.get_jobs import get_jobs
+    from scientiflow_cli.pipeline.container_manager import get_available_containers, delete_selected_containers
+    from scientiflow_cli.services.base_directory import set_base_directory, get_base_directory #need to replace subprocess call with set_base_directory
 except ImportError:
     AuthService = None
 
@@ -201,6 +205,8 @@ class MainWindow:
 
         # Load jobs when landing on jobs page
         self.show_jobs_page()
+        self.window.btn_delete_containers.clicked.connect(self.delete_selected_containers)
+        self.show_containers_page()
 
     def show_jobs_page(self):
         self.window.stackedWidget.setCurrentWidget(self.window.page_jobs)
@@ -331,6 +337,83 @@ class MainWindow:
 
     def append_log(self, message):
         self.window.textBrowser_logs.append(message)
+
+    def show_containers_page(self):
+        containers_dir = Path(get_base_directory()) / "containers"
+        if not containers_dir.exists():
+            containers_dir.mkdir()  
+        try:
+            containers = get_available_containers(containers_dir)
+            table = self.window.table_containers
+            table.setRowCount(0)
+            table.setColumnCount(2)
+            table.setHorizontalHeaderLabels(["Select", "Container Name"])
+
+            for i, container_name in enumerate(containers):
+                table.insertRow(i)
+
+                # Add checkbox in the first column
+                checkbox = QWidget()
+                layout = QHBoxLayout(checkbox)
+                layout.setAlignment(Qt.AlignCenter)
+                cb = QCheckBox()
+                layout.addWidget(cb)
+                layout.setContentsMargins(0, 0, 0, 0)
+                table.setCellWidget(i, 0, checkbox)
+
+                # Add container name in the second column
+                table.setItem(i, 1, QTableWidgetItem(container_name))
+
+        except Exception as e:
+            QMessageBox.critical(self.window, "Error", f"Failed to load containers: {e}")
+
+    def delete_selected_containers(self):
+        containers_dir = Path(get_base_directory()) / "containers"
+        table = self.window.table_containers
+        selected_indices = []
+        container_names = []
+
+        # Collect selected containers
+        for row in range(table.rowCount()):
+            widget = table.cellWidget(row, 0)
+            if widget:
+                cb = widget.findChild(QCheckBox)
+                if cb and cb.isChecked():
+                    container_name_item = table.item(row, 1)
+                    if container_name_item:
+                        selected_indices.append(row)
+                        container_names.append(container_name_item.text())
+
+        if not container_names:
+            QMessageBox.warning(self.window, "No Containers Selected", "Please select at least one container to delete.")
+            return
+
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self.window,
+            "Confirm Deletion",
+            f"Are you sure you want to delete {len(container_names)} container(s)?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+
+        if reply == QMessageBox.No:
+            return
+
+        # Delete containers
+        try:
+            results = delete_selected_containers(containers_dir, container_names, list(range(1, len(container_names) + 1)))
+            success_count = 0
+            for res in results:
+                if res["status"] == "success":
+                    success_count += 1
+                else:
+                    QMessageBox.warning(self.window, "Error", res["message"])
+
+            QMessageBox.information(self.window, "Deletion Complete", f"Successfully deleted {success_count} container(s).")
+            self.show_containers_page()  # Refresh the table
+
+        except Exception as e:
+            QMessageBox.critical(self.window, "Error", f"Failed to delete containers: {e}")
 
 class SettingsWindow:
     def __init__(self):
