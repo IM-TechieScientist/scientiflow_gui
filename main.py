@@ -8,6 +8,7 @@ from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread, Signal
+from PySide6.QtGui import QPixmap
 import sys, subprocess, platform
 from pathlib import Path
 
@@ -28,6 +29,7 @@ class LoginWindow:
         self.window = loader.load(ui_file)
         ui_file.close()
         self.window.pushButton.clicked.connect(self.handle_login)
+        self.window.label.setPixmap(QPixmap("scientiflow.jpg"))
 
     def handle_login(self):
         if AuthService is None:
@@ -78,6 +80,7 @@ class GammaWindow:
         self.window.toolButton.clicked.connect(self.open_directory_dialog)
         self.window.checkBox.stateChanged.connect(self.handle_singularity_checkbox)
         self.window.checkBox_2.setEnabled(False)
+        self.window.label.setPixmap(QPixmap("scientiflow.jpg"))
         self.singularity_thread = None
         self.base_directory = ""
         self.singularity_checked = False
@@ -202,6 +205,8 @@ class MainWindow:
         self.window.stackedWidget.setCurrentWidget(self.window.page_jobs)
         self.settings_window = None
         self.jobs_loader_thread = None
+
+        self.window.label.setPixmap(QPixmap("scientiflow.jpg"))
 
         # Load jobs when landing on jobs page
         self.show_jobs_page()

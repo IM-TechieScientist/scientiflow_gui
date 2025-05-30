@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>740</width>
-    <height>525</height>
+    <width>775</width>
+    <height>527</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -19,12 +19,36 @@
      <widget class="QWidget" name="sidebar" native="true">
       <layout class="QVBoxLayout" name="sidebarLayout">
        <item>
-        <widget class="QLabel" name="label_scientiflow">
+        <widget class="QLabel" name="label">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="minimumSize">
+          <size>
+           <width>165</width>
+           <height>77</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>117</width>
+           <height>77</height>
+          </size>
+         </property>
          <property name="styleSheet">
           <string notr="true">font-size: 22pt; font-weight: bold; margin: 20px 0px 20px 0px;</string>
          </property>
          <property name="text">
-          <string>Scientiflow</string>
+          <string/>
+         </property>
+         <property name="pixmap">
+          <pixmap>../scientiflow.jpg</pixmap>
+         </property>
+         <property name="scaledContents">
+          <bool>true</bool>
          </property>
          <property name="alignment">
           <set>Qt::AlignmentFlag::AlignCenter</set>
